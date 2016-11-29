@@ -1,30 +1,33 @@
 From: Matthias Schiffer <mschiffer@universe-factory.net>
-Date: Fri, 29 Jul 2016 21:28:24 +0200
-Subject: netifd: update to latest version
+Date: Tue, 29 Nov 2016 19:11:52 +0100
+Subject: netifd: update to LEDE 9a5801e7f6e8bc6641ca320e4497d298080f1b24
 
 diff --git a/package/network/config/netifd/Makefile b/package/network/config/netifd/Makefile
-index 619024b..dc83ca6 100644
+index 619024b..2689cfc 100644
 --- a/package/network/config/netifd/Makefile
 +++ b/package/network/config/netifd/Makefile
-@@ -1,15 +1,15 @@
+@@ -1,17 +1,15 @@
  include $(TOPDIR)/rules.mk
  
  PKG_NAME:=netifd
 -PKG_VERSION:=2015-12-16
-+PKG_VERSION:=2016-07-29
++PKG_VERSION:=2016-11-21
  PKG_RELEASE=$(PKG_SOURCE_VERSION)
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL:=http://git.openwrt.org/project/netifd.git
  PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
 -PKG_SOURCE_VERSION:=245527193e90906451be35c2b8e972b8712ea6ab
-+PKG_SOURCE_VERSION:=656c387974879105c2aaec6b62478d0195067f2d
- PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION).tar.gz
+-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION).tar.gz
 -PKG_MAINTAINER:=Felix Fietkau <nbd@openwrt.org>
+-# PKG_MIRROR_MD5SUM:=
+-# CMAKE_INSTALL:=1
++PKG_SOURCE_VERSION:=153a12143b9fef4b5d3c3a6597f6fe967a17c9d7
++PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION).tar.xz
 +PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
- # PKG_MIRROR_MD5SUM:=
- # CMAKE_INSTALL:=1
  
+ PKG_LICENSE:=GPL-2.0
+ PKG_LICENSE_FILES:=
 diff --git a/package/network/config/netifd/files/etc/init.d/network b/package/network/config/netifd/files/etc/init.d/network
 index 542fc08..bdadbbc 100755
 --- a/package/network/config/netifd/files/etc/init.d/network
@@ -38,7 +41,7 @@ index 542fc08..bdadbbc 100755
  	procd_close_instance
  }
 diff --git a/package/network/config/netifd/files/lib/netifd/proto/dhcp.sh b/package/network/config/netifd/files/lib/netifd/proto/dhcp.sh
-index 0e88af9..1d3a209 100755
+index 0e88af9..ea02d68 100755
 --- a/package/network/config/netifd/files/lib/netifd/proto/dhcp.sh
 +++ b/package/network/config/netifd/files/lib/netifd/proto/dhcp.sh
 @@ -12,6 +12,7 @@ proto_dhcp_init_config() {
@@ -49,18 +52,25 @@ index 0e88af9..1d3a209 100755
  	proto_config_add_string 'reqopts:list(string)'
  	proto_config_add_string iface6rd
  	proto_config_add_string sendopts
-@@ -26,8 +27,8 @@ proto_dhcp_setup() {
+@@ -20,14 +21,15 @@ proto_dhcp_init_config() {
+ 	proto_config_add_string zone
+ 	proto_config_add_string mtu6rd
+ 	proto_config_add_string customroutes
++	proto_config_add_boolean classlessroute
+ }
+ 
+ proto_dhcp_setup() {
  	local config="$1"
  	local iface="$2"
  
 -	local ipaddr hostname clientid vendorid broadcast reqopts iface6rd sendopts delegate zone6rd zone mtu6rd customroutes
 -	json_get_vars ipaddr hostname clientid vendorid broadcast reqopts iface6rd sendopts delegate zone6rd zone mtu6rd customroutes
-+	local ipaddr hostname clientid vendorid broadcast release reqopts iface6rd sendopts delegate zone6rd zone mtu6rd customroutes
-+	json_get_vars ipaddr hostname clientid vendorid broadcast release reqopts iface6rd sendopts delegate zone6rd zone mtu6rd customroutes
++	local ipaddr hostname clientid vendorid broadcast release reqopts iface6rd sendopts delegate zone6rd zone mtu6rd customroutes classlessroute
++	json_get_vars ipaddr hostname clientid vendorid broadcast release reqopts iface6rd sendopts delegate zone6rd zone mtu6rd customroutes classlessroute
  
  	local opt dhcpopts
  	for opt in $reqopts; do
-@@ -39,6 +40,7 @@ proto_dhcp_setup() {
+@@ -39,6 +41,7 @@ proto_dhcp_setup() {
  	done
  
  	[ "$broadcast" = 1 ] && broadcast="-B" || broadcast=
@@ -68,7 +78,16 @@ index 0e88af9..1d3a209 100755
  	[ -n "$clientid" ] && clientid="-x 0x3d:${clientid//:/}" || clientid="-C"
  	[ -n "$iface6rd" ] && proto_export "IFACE6RD=$iface6rd"
  	[ "$iface6rd" != 0 -a -f /lib/netifd/proto/6rd.sh ] && append dhcpopts "-O 212"
-@@ -54,9 +56,9 @@ proto_dhcp_setup() {
+@@ -47,6 +50,8 @@ proto_dhcp_setup() {
+ 	[ -n "$mtu6rd" ] && proto_export "MTU6RD=$mtu6rd"
+ 	[ -n "$customroutes" ] && proto_export "CUSTOMROUTES=$customroutes"
+ 	[ "$delegate" = "0" ] && proto_export "IFACE6RD_DELEGATE=0"
++	# Request classless route option (see RFC 3442) by default
++	[ "$classlessroute" = "0" ] || append dhcpopts "-O 121"
+ 
+ 	proto_export "INTERFACE=$config"
+ 	proto_run_command "$config" udhcpc \
+@@ -54,9 +59,9 @@ proto_dhcp_setup() {
  		-s /lib/netifd/dhcp.script \
  		-f -t 0 -i "$iface" \
  		${ipaddr:+-r $ipaddr} \
